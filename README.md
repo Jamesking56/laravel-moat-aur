@@ -28,7 +28,7 @@ PKGBUILD                         Arch Linux package build definition
 
 ## How it works
 
-Every 6 hours (and on manual `workflow_dispatch`), the sync workflow:
+Every hour (and on manual `workflow_dispatch`), the sync workflow:
 
 1. Checks the latest GitHub release from `laravel/moat` via the API
 2. Reads the current version from `PKGBUILD`
@@ -36,32 +36,4 @@ Every 6 hours (and on manual `workflow_dispatch`), the sync workflow:
 
 Checksums are taken from the release API's `digest` field rather than re-downloading the tarballs, making the workflow fast and lightweight.
 
-## Setup
 
-### 1. Create the AUR package repository
-
-```bash
-ssh aur@aur.archlinux.org setup-repository laravel-moat
-git clone ssh://aur@aur.archlinux.org/laravel-moat.git
-```
-
-### 2. Generate an SSH key for the bot
-
-```bash
-ssh-keygen -t ed25519 -C "aur-bot" -f ~/.ssh/aur-bot -N ""
-cat ~/.ssh/aur-bot.pub
-```
-
-### 3. Register the SSH key with your AUR account
-
-Add the public key at https://aur.archlinux.org/account/ (SSH Public Key section).
-
-### 4. Add the secret to this GitHub repository
-
-| Secret | Value |
-|--------|-------|
-| `AUR_SSH_PRIVATE_KEY` | Contents of `~/.ssh/aur-bot` (the private key) |
-
-### 5. Run the workflow
-
-Trigger it manually via `Actions > Sync AUR package > Run workflow`, or wait for the scheduled run.
