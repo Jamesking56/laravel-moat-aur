@@ -22,8 +22,8 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           ASSETS=$(echo "$RELEASE" | jq '.assets')
-          SHA256_X86_64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("x86_64")) | .digest' | sed 's/^sha256://')
-          SHA256_AARCH64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("aarch64")) | .digest' | sed 's/^sha256://')
+          SHA256_X86_64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("x86_64-unknown-linux-gnu")) | .digest' | sed 's/^sha256://')
+          SHA256_AARCH64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("aarch64-unknown-linux-gnu")) | .digest' | sed 's/^sha256://')
           SHA256_LICENSE=$(curl -sL https://raw.githubusercontent.com/laravel/moat/0.x/LICENSE.md | sha256sum | cut -d' ' -f1)
 
           echo "sha256_x86_64=$SHA256_X86_64" >> "$GITHUB_OUTPUT"
