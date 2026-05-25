@@ -1,5 +1,7 @@
 # Security Policy
 
+**PLEASE DON'T DISCLOSE SECURITY-RELATED ISSUES PUBLICLY.**
+
 ## Reporting a Vulnerability
 
 ### Moat (upstream tool)
