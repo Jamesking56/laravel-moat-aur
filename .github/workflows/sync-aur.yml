@@ -1,0 +1,79 @@
+name: Sync AUR package
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check latest release
+        id: latest
+        run: |
+          RELEASE=$(curl -sL https://api.github.com/repos/laravel/moat/releases/latest)
+          TAG=$(echo "$RELEASE" | jq -r '.tag_name')
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          ASSETS=$(echo "$RELEASE" | jq '.assets')
+          SHA256_X86_64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("x86_64")) | .digest' | sed 's/^sha256://')
+          SHA256_AARCH64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("aarch64")) | .digest' | sed 's/^sha256://')
+          SHA256_LICENSE=$(curl -sL https://raw.githubusercontent.com/laravel/moat/0.x/LICENSE.md | sha256sum | cut -d' ' -f1)
+
+          echo "sha256_x86_64=$SHA256_X86_64" >> "$GITHUB_OUTPUT"
+          echo "sha256_aarch64=$SHA256_AARCH64" >> "$GITHUB_OUTPUT"
+          echo "sha256_license=$SHA256_LICENSE" >> "$GITHUB_OUTPUT"
+
+      - name: Read current version
+        id: current
+        run: |
+          VERSION=$(grep -oP '^pkgver=\K.+' PKGBUILD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Nothing to do
+        if: steps.latest.outputs.version == steps.current.outputs.version
+        run: echo "PKGBUILD already at ${{ steps.latest.outputs.version }}. Nothing to do."
+
+      - name: Update PKGBUILD
+        if: steps.latest.outputs.version != steps.current.outputs.version
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.latest.outputs.version }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums_x86_64=('[^']*')/sha256sums_x86_64=('${{ steps.latest.outputs.sha256_x86_64 }}')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=('[^']*')/sha256sums_aarch64=('${{ steps.latest.outputs.sha256_aarch64 }}')/" PKGBUILD
+          sed -i "s/^sha256sums=('[^']*')/sha256sums=('${{ steps.latest.outputs.sha256_license }}')/" PKGBUILD
+
+      - name: Generate .SRCINFO
+        if: steps.latest.outputs.version != steps.current.outputs.version
+        run: |
+          docker run --rm \
+            -v "$(pwd):/work:rw" \
+            archlinux:latest \
+            bash -c "
+              pacman -Syu --noconfirm base-devel >/dev/null 2>&1
+              cd /work
+              useradd -m builder
+              chown -R builder:builder /work
+              su builder -c 'makepkg --printsrcinfo' > .SRCINFO.tmp
+              mv .SRCINFO.tmp .SRCINFO
+            "
+
+      - name: Commit and push to AUR
+        if: steps.latest.outputs.version != steps.current.outputs.version
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          git clone "ssh://aur@aur.archlinux.org/${{ vars.AUR_PACKAGE_NAME || 'laravel-moat' }}.git" /tmp/aur-pkg
+          cp PKGBUILD .SRCINFO /tmp/aur-pkg/
+          cd /tmp/aur-pkg
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to ${{ steps.latest.outputs.tag }}"
+          git push origin master
