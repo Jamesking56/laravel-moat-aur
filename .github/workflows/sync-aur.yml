@@ -74,6 +74,8 @@ jobs:
           git clone "ssh://aur@aur.archlinux.org/${{ vars.AUR_PACKAGE_NAME || 'laravel-moat' }}.git" /tmp/aur-pkg
           cp PKGBUILD .SRCINFO /tmp/aur-pkg/
           cd /tmp/aur-pkg
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add PKGBUILD .SRCINFO
           git commit -m "Update to ${{ steps.latest.outputs.tag }}"
           git push origin master
