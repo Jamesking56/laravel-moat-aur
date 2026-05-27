@@ -16,8 +16,20 @@ jobs:
         id: latest
         run: |
           RELEASE=$(curl -sL https://api.github.com/repos/laravel/moat/releases/latest)
+
+          if echo "$RELEASE" | jq -e 'has("message")' > /dev/null 2>&1; then
+            echo "error=GitHub API error: $(echo "$RELEASE" | jq -r '.message')" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
           TAG=$(echo "$RELEASE" | jq -r '.tag_name')
           VERSION="${TAG#v}"
+
+          if [ "$TAG" = "null" ] || [ -z "$TAG" ]; then
+            echo "error=API returned null or empty tag_name" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -25,6 +37,11 @@ jobs:
           SHA256_X86_64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("x86_64-unknown-linux-gnu")) | .digest' | sed 's/^sha256://')
           SHA256_AARCH64=$(echo "$ASSETS" | jq -r '.[] | select(.name | contains("aarch64-unknown-linux-gnu")) | .digest' | sed 's/^sha256://')
           SHA256_LICENSE=$(curl -sL https://raw.githubusercontent.com/laravel/moat/1.x/LICENSE.md | sha256sum | cut -d' ' -f1)
+
+          if [ -z "$SHA256_X86_64" ] || [ -z "$SHA256_AARCH64" ]; then
+            echo "error=Could not extract sha256 checksums from release assets" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
 
           echo "sha256_x86_64=$SHA256_X86_64" >> "$GITHUB_OUTPUT"
           echo "sha256_aarch64=$SHA256_AARCH64" >> "$GITHUB_OUTPUT"
@@ -55,7 +72,7 @@ jobs:
           docker run --rm \
             -v "$(pwd):/work:rw" \
             archlinux:latest \
-            bash -c "
+            bash -e -c "
               pacman -Syu --noconfirm base-devel >/dev/null 2>&1
               cd /work
               useradd -m builder
@@ -76,6 +93,11 @@ jobs:
           cd /tmp/aur-pkg
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add PKGBUILD .SRCINFO
-          git commit -m "Update to ${{ steps.latest.outputs.tag }}"
-          git push origin master
+
+          if ! git diff --quiet; then
+            git add PKGBUILD .SRCINFO
+            git commit -m "Update to ${{ steps.latest.outputs.tag }}"
+            git push origin master
+          else
+            echo "AUR repo already up to date. Nothing to push."
+          fi
